@@ -1,2 +1,2 @@
 # carbon
-An attempt to replycate micrograd in rust
+An attempt to replicate micrograd in rust
