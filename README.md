@@ -3,7 +3,8 @@
 [![Rust](https://img.shields.io/badge/Language-Rust-orange.svg)](https://www.rust-lang.org/) [![Status](https://img.shields.io/badge/Status-Work%20in%20Progress-blue.svg)](https://github.com/yourusername/carbon)
 
 Welcome to Carbon! 🚀 
-This project is a labor of love, born out of the desire to learn Rust while delving into the exciting world of deep learning. While it's not a full-fledged deep learning framework, it's a functional micrograd implementation built to sharpen Rust skills. And guess what? It actually works to train dummy neural nets! 🎉
+Carbon is a fully functional differentiation engine for 2D tensors and scalar operations, written in Rust. It's inspired by [micrograd](https://github.com/karpathy/micrograd).
+This project is a labor of love, born out of the desire to learn Rust while delving into the exciting world of deep learning. While it's not a full-fledged deep learning framework, it actually works to train dummy neural nets! 🎉
 
 ## Project Highlights
 - 🤖 **Neural Net Layer:** Carbon features a neural net layer, inspired by micrograd, that includes neurons, layers, and multi-layer perceptrons (MLP). It's perfect for experimenting with basic neural networks.
