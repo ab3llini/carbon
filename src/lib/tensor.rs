@@ -1,9 +1,8 @@
-use crate::lib::grad::Scalar;
 use crate::lib::grad::Activation;
+use crate::lib::grad::Scalar;
+use rand::distributions::Uniform;
 use rand::Rng;
 use std::vec::Vec;
-use rand::distributions::Uniform;
-
 
 #[derive(Debug)]
 pub struct Tensor2D {
@@ -14,11 +13,23 @@ pub struct Tensor2D {
 
 impl Tensor2D {
     pub fn zeros(rows: usize, cols: usize) -> Self {
-        Self {
-            rows,
-            cols,
-            data: vec![vec![Scalar::new(0.0); cols]; rows],
-        }
+        // Do not initialize data with something like this:
+        // vec![vec![Scalar::new(0.0); cols]; rows],
+        // This leads to a huge bug where all the scalars in the tensor point to the same memory address.
+
+        let data = {
+            let mut data = Vec::new();
+            for _ in 0..rows {
+                let mut row = Vec::new();
+                for _ in 0..cols {
+                    row.push(Scalar::new(0.0));
+                }
+                data.push(row);
+            }
+            data
+        };
+
+        Self { rows, cols, data }
     }
 
     pub fn uniform(rows: usize, cols: usize) -> Self {
@@ -58,7 +69,6 @@ impl Tensor2D {
     }
 
     pub fn from(vec: Vec<Vec<f64>>) -> Self {
-
         // Assert that the vector is not empty.
         assert!(!vec.is_empty());
 
@@ -122,7 +132,9 @@ impl Tensor2D {
             for col in 0..tensor.cols {
                 match activation {
                     Activation::Tanh => ans.data[row][col] = tensor.data[row][col].clone().tanh(),
-                    Activation::Sigmoid => ans.data[row][col] = tensor.data[row][col].clone().sigmoid(),
+                    Activation::Sigmoid => {
+                        ans.data[row][col] = tensor.data[row][col].clone().sigmoid()
+                    }
                     Activation::ReLU => ans.data[row][col] = tensor.data[row][col].clone().relu(),
                     Activation::Exp => ans.data[row][col] = tensor.data[row][col].clone().exp(),
                 }
@@ -148,7 +160,7 @@ impl Tensor2D {
         Self::nonlinear(self, Activation::Exp)
     }
 
-    // The pow of a tensor is a tensor 
+    // The pow of a tensor is a tensor
     // To compute it we have to call pow on each element of the tensor
     pub fn pow(self, power: f64) -> Tensor2D {
         let mut ans = Self::zeros(self.rows, self.cols);
@@ -161,5 +173,4 @@ impl Tensor2D {
 
         ans
     }
-
 }

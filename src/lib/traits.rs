@@ -49,6 +49,7 @@ impl Display for Tensor2D {
 
 impl Clone for Tensor2D {
     fn clone(&self) -> Self {
+
         let mut data = Vec::new();
 
         for row in 0..self.rows {
@@ -66,3 +67,4 @@ impl Clone for Tensor2D {
         }
     }
 }
+
