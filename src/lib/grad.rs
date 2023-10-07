@@ -1,4 +1,4 @@
-use std::cell::RefCell;
+use std::cell::Cell;
 use std::collections::HashSet;
 use std::f64::consts::E;
 use std::rc::Rc;
@@ -8,10 +8,10 @@ pub enum Operation {
     Add,
     Mul,
     Sub,
-    Div
+    Div,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone)]
 pub enum Activation {
     Exp,
     Tanh,
@@ -20,193 +20,240 @@ pub enum Activation {
 }
 
 #[derive(Debug, Clone)]
-pub enum Ancestor {
-    Single { x: Scalar, activation: Activation },
-    Double { lhs: Scalar, rhs: Scalar, operation: Operation },
+pub enum Dependency {
+    Single {
+        scalar: Rc<Scalar>,
+        activation: Activation,
+    },
+    Double {
+        lhs: Rc<Scalar>,
+        rhs: Rc<Scalar>,
+        op: Operation,
+    },
 }
 
 #[derive(Debug, Clone)]
-pub struct Node {
-    pub value: f64,
-    pub prev: Option<Ancestor>,
-    pub grad: f64,
+pub struct Scalar {
+    pub val: Cell<f64>,
+    pub grad: Cell<Option<f64>>,
+    pub dep: Option<Dependency>,
 }
 
-#[derive(Debug)]
-pub struct Scalar {
-    pub data: Rc<RefCell<Node>>,
-}
 
 impl Scalar {
-    pub fn new(value: f64) -> Self {
-        Self {
-            data: Rc::new(RefCell::new(Node {
-                value,
-                prev: None,
-                grad: 0.0,
-            })),
+    pub fn new(value: f64) -> Rc<Self> {
+        Rc::new(Self {
+            val: Cell::new(value),
+            grad: Cell::new(None),
+            dep: None,
+        })
+    }
+
+    pub fn grad(self: &Rc<Self>) -> Option<f64> {
+        self.grad.get()
+    }
+
+    pub fn value(self: &Rc<Self>) -> f64 {
+        self.val.get()
+    }
+
+    fn accumulate(self: &Rc<Self>, value: f64) -> () {
+        match self.grad.get() {
+            Some(grad) => self.grad.set(Some(grad + value)),
+            None => self.grad.set(Some(value)),
         }
     }
 
-    pub fn grad(&self) -> f64 {
-        self.data.borrow().grad
-    }
-
-    pub fn value(&self) -> f64 {
-        self.data.borrow().value
-    }
-
-    pub fn set_value(&self, value: f64) -> () {
-        self.data.borrow_mut().value = value;
-    }
-
-    fn accumulate(&self, value: f64) -> () {
-        self.data.borrow_mut().grad += value
-    }
-
-    pub fn compute(lhs: Self, rhs: Self, op: Operation) -> Self {
-        let value: f64 = match op {
+    pub fn compute(lhs: &Rc<Self>, rhs: &Rc<Self>, op: Operation) -> Self {
+        let result: f64 = match op {
             Operation::Add => lhs.value() + rhs.value(),
             Operation::Mul => lhs.value() * rhs.value(),
             Operation::Sub => lhs.value() - rhs.value(),
             Operation::Div => lhs.value() / rhs.value(),
         };
-        let node: Node = Node {
-            value,
-            prev: Some(Ancestor::Double { lhs, rhs, operation: op }),
-            grad: 0.0,
-        };
-        Scalar {
-            data: Rc::new(RefCell::new(node)),
+
+        Self {
+            val: Cell::new(result),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Double {
+                lhs: lhs.clone(),
+                rhs: rhs.clone(),
+                op,
+            }),
         }
     }
 
-    fn nonlinear(x: Self, activation: Activation) -> Self {
-        let value: f64 = match activation {
-            Activation::Exp => E.powf(x.value()),
-            Activation::Tanh => x.value().tanh(),
-            Activation::Sigmoid => 1.0 / (1.0 + (-x.value()).exp()),
-            Activation::ReLU => {
-                if x.value() > 0.0 {
-                    x.value()
-                } else {
-                    0.0
-                }
+    pub fn tanh(self: &Rc<Self>) -> Self {
+        Self {
+            val: Cell::new(self.value().tanh()),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Single {
+                scalar: self.clone().clone(),
+                activation: Activation::Tanh,
+            }),
+        }
+    }
+
+    pub fn exp(self: &Rc<Self>) -> Self {
+        Self {
+            val: Cell::new(E.powf(self.value())),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Single {
+                scalar: self.clone(),
+                activation: Activation::Exp,
+            }),
+        }
+    }
+    pub fn sigmoid(self: &Rc<Self>) -> Self {
+        Self {
+            val: Cell::new(1.0 / (1.0 + (-self.value()).exp())),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Single {
+                scalar: self.clone(),
+                activation: Activation::Sigmoid,
+            }),
+        }
+    }
+    pub fn relu(self: &Rc<Self>) -> Self {
+        let val = {
+            if self.value() > 0.0 {
+                self.value()
+            } else {
+                0.0
             }
         };
-        let node: Node = Node {
-            value,
-            prev: Some(Ancestor::Single { x, activation}),
-            grad: 0.0,
-        };
-        Scalar {
-            data: Rc::new(RefCell::new(node)),
+
+        Self {
+            val: Cell::new(val),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Single {
+                scalar: self.clone(),
+                activation: Activation::ReLU,
+            }),
         }
     }
 
-    pub fn tanh(self) -> Self {
-        Self::nonlinear(self, Activation::Tanh)
-    }
+    pub fn pow(self: &Rc<Self>, power: f64) -> Self {
+        let mut val = self.value();
 
-    pub fn exp(self) -> Self {
-        Self::nonlinear(self, Activation::Exp)
-    }
-    pub fn sigmoid(self) -> Self {
-        Self::nonlinear(self, Activation::Sigmoid)
-    }
-    pub fn relu(self) -> Self {
-        Self::nonlinear(self, Activation::ReLU)
-    }
-
-    // The pow of a scalar is a scalar
-    // x^2 is like x*x and x^3 is like x*x*x
-    // This function takes a scalar and computes self^power multiplying self by itself power times
-    pub fn pow(self, power: f64) -> Self {
-        let mut ans = self.clone();
         for _ in 1..power as usize {
-            ans = &ans * &self.clone();
+            val *= self.value();
         }
-        ans
+
+        Self {
+            val: Cell::new(val),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Single {
+                scalar: self.clone(),
+                activation: Activation::Exp,
+            }),
+        }
     }
 
-    
-
-    fn _backward(self) -> () {
-        if let Some(prev) = &self.data.borrow().prev {
-
+    fn _backward(self: &Rc<Self>) -> () {
+        if let (Some(dep), Some(grad)) = (&self.dep, self.grad.get()) {
             // When we have an operation, we need to apply the chain rule to calculate the derivative.
             // The chain rule states that the derivative of a function f(g(x)) is f'(g(x)) * g'(x).
 
-            match prev {
-
-                Ancestor::Double { lhs, rhs, operation:Operation::Add } => {
+            match dep {
+                Dependency::Double {
+                    lhs,
+                    rhs,
+                    op: Operation::Add,
+                } => {
                     // Addition means: f(x) = x + y, f'(x) = 1, f'(y) = 1
                     // So we just accumulate the gradient by 1.0 times the gradient of the output.
-                    lhs.accumulate(self.grad() * 1.0);
-                    rhs.accumulate(self.grad() * 1.0);
+                    lhs.accumulate(grad * 1.0);
+                    rhs.accumulate(grad * 1.0);
                 }
-                Ancestor::Double { lhs, rhs, operation:Operation::Mul } => {
+                Dependency::Double {
+                    lhs,
+                    rhs,
+                    op: Operation::Mul,
+                } => {
                     // Multiplication means: f(x) = x * y, f'(x) = y, f'(y) = x
                     // So we just accumulate the gradient by the other parent times the gradient of the output.
-                    lhs.accumulate(self.grad() * rhs.value());
-                    rhs.accumulate(self.grad() * lhs.value());
+                    lhs.accumulate(grad * rhs.value());
+                    rhs.accumulate(grad * lhs.value());
                 }
-                Ancestor::Double { lhs, rhs, operation:Operation::Sub } => {
+                Dependency::Double {
+                    lhs,
+                    rhs,
+                    op: Operation::Sub,
+                } => {
                     // Subtraction means: f(x) = x - y, f'(x) = 1, f'(y) = -1
                     // So we just accumulate the gradient by 1.0 or -1.0 times the gradient of the output.
-                    lhs.accumulate(self.grad() * 1.0);
-                    rhs.accumulate(self.grad() * -1.0);
+                    lhs.accumulate(grad * 1.0);
+                    rhs.accumulate(grad * -1.0);
                 }
-                Ancestor::Double { lhs, rhs, operation:Operation::Div } => {
+                Dependency::Double {
+                    lhs,
+                    rhs,
+                    op: Operation::Div,
+                } => {
                     // Division means: f(x) = x / y, f'(x) = 1 / y, f'(y) = -x / y^2
                     // So, for the left hand side, we accumulate by 1.0 divided by the right hand side times the gradient of the output.
                     // For the right hand side, we accumulate by -1.0 times the left hand side divided by the right hand side squared times the gradient of the output.
-                    lhs.accumulate(self.grad() * 1.0 / rhs.value());
-                    rhs.accumulate(self.grad() * -1.0 * lhs.value() / rhs.value().powi(2));
+                    lhs.accumulate(grad * 1.0 / rhs.value());
+                    rhs.accumulate(grad * -1.0 * lhs.value() / rhs.value().powi(2));
                 }
-                Ancestor::Single { x, activation:Activation::Tanh } => {
+                Dependency::Single {
+                    scalar,
+                    activation: Activation::Tanh,
+                } => {
                     // Tanh means: f(x) = tanh(x), f'(x) = 1 - tanh(x)^2
                     // So, we set the gradient of the parent to 1.0 minus the parent squared times the gradient of the output.
-                    x.accumulate(self.grad() * (1.0 - self.value().powi(2)));
+                    scalar.accumulate(grad * (1.0 - self.value().powi(2)));
                 }
-                Ancestor::Single { x, activation:Activation::Exp } => {
+                Dependency::Single {
+                    scalar,
+                    activation: Activation::Exp,
+                } => {
                     // Exp means: f(x) = e^x, f'(x) = e^x
                     // So, we set the gradient of the parent to e^x times the gradient of the output.
-                    x.accumulate(self.grad() * self.value());
+                    scalar.accumulate(grad * self.value());
                 }
-                Ancestor::Single { x, activation:Activation::Sigmoid } => {
+                Dependency::Single {
+                    scalar,
+                    activation: Activation::Sigmoid,
+                } => {
                     // Sigmoid means: f(x) = 1 / (1 + e^-x), f'(x) = f(x) * (1 - f(x))
                     // So, we set the gradient of the parent to f(x) times 1 - f(x) times the gradient of the output.
-                    x.accumulate(self.grad() * self.value() * (1.0 - self.value()));
+                    scalar.accumulate(grad * self.value() * (1.0 - self.value()));
                 }
-                Ancestor::Single { x, activation:Activation::ReLU } => {
+                Dependency::Single {
+                    scalar,
+                    activation: Activation::ReLU,
+                } => {
                     // ReLU means: f(x) = max(0, x), f'(x) = 1 if x > 0, 0 otherwise
                     // So, we set the gradient of the parent to 1.0 if the parent is greater than 0.0, 0.0 otherwise.
-                    if x.value() > 0.0 {
-                        x.accumulate(self.grad() * 1.0);
+                    if scalar.value() > 0.0 {
+                        scalar.accumulate(grad * 1.0);
                     } else {
-                        x.accumulate(self.grad() * 0.0);
+                        scalar.accumulate(grad * 0.0);
                     }
                 }
             }
         }
     }
 
-    fn topological(value: &Self, visited: &mut HashSet<Scalar>, stack: &mut Vec<Scalar>) {
-        if !visited.contains(value) {
+    fn topological(value: &Rc<Self>, visited: &mut HashSet<usize>, stack: &mut Vec<Rc<Self>>) {
+        if !visited.contains(&value.ptr()) {
             // Insert the node into the visited set
-            visited.insert(value.clone());
+            visited.insert(value.ptr());
 
-            if let Some(prev) = &value.data.borrow().prev {
-                match prev {
-                    Ancestor::Single { x, activation: _ } => {
-                        Self::topological(&x, visited, stack);
-                    }
-                    Ancestor::Double { lhs, rhs, operation: _ } => {
-                        Self::topological(&lhs, visited, stack);
-                        Self::topological(&rhs, visited, stack);
-                    }
+            match &value.dep {
+                Some(Dependency::Single {
+                    scalar,
+                    activation: _,
+                }) => {
+                    Self::topological(scalar, visited, stack);
                 }
+                Some(Dependency::Double { lhs, rhs, op: _ }) => {
+                    Self::topological(lhs, visited, stack);
+                    Self::topological(rhs, visited, stack);
+                }
+                None => {}
             }
 
             // Push the node onto the stack.
@@ -215,10 +262,15 @@ impl Scalar {
         }
     }
 
-    pub fn backward(&self) {
+    // Returns the hash of the Rc pointer
+    fn ptr(self: &Rc<Self>) -> usize {
+        Rc::as_ptr(self) as usize
+    }
+
+    pub fn backward(self: &Rc<Self>) {
         // Base strutures to sort the nodes topologically
-        let mut visited: HashSet<Scalar> = HashSet::new();
-        let mut stack: Vec<Scalar> = Vec::new();
+        let mut visited: HashSet<usize> = HashSet::new();
+        let mut stack: Vec<Rc<Scalar>> = Vec::new();
 
         // Sort the nodes topologically
         Self::topological(self, &mut visited, &mut stack);
@@ -234,5 +286,4 @@ impl Scalar {
             node._backward();
         }
     }
-
 }
