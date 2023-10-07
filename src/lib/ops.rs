@@ -1,134 +1,141 @@
+use crate::lib::grad::Dependency;
+use crate::lib::grad::Node;
 use crate::lib::grad::Operation;
 use crate::lib::grad::Scalar;
 use crate::lib::tensor::Tensor2D;
 
+use std::cell::Cell;
+use std::rc::Rc;
+
 use std::ops::{Add, Div, Mul, Sub};
 
+fn op(lhs: &Scalar, rhs: &Scalar, op: Operation) -> Scalar {
+    Scalar {
+        node: Rc::new(Node {
+            val: Cell::new(match op {
+                Operation::Add => lhs.value() + rhs.value(),
+                Operation::Sub => lhs.value() - rhs.value(),
+                Operation::Mul => lhs.value() * rhs.value(),
+                Operation::Div => lhs.value() / rhs.value(),
+            }),
+            grad: Cell::new(None),
+            dep: Some(Dependency::Double {
+                lhs: lhs.clone(),
+                rhs: rhs.clone(),
+                op,
+            }),
+        }),
+    }
+}
 
 impl Add for &Scalar {
     type Output = Scalar;
 
-    fn add(self, rhs: &Scalar) -> Scalar {
-        Scalar::compute(self.clone(), rhs.clone(), Operation::Add)
+    fn add(self, rhs: Self) -> Self::Output {
+        op(self, rhs, Operation::Add)
     }
 }
 
 impl Add<f64> for &Scalar {
     type Output = Scalar;
 
-    fn add(self, rhs: f64) -> Scalar {
-        Scalar::compute(self.clone(), Scalar::new(rhs), Operation::Add)
+    fn add(self, rhs: f64) -> Self::Output {
+        op(self, &Scalar::new(rhs), Operation::Add)
     }
 }
 
 impl Add<&Scalar> for f64 {
     type Output = Scalar;
 
-    fn add(self, rhs: &Scalar) -> Scalar {
-        Scalar::compute(Scalar::new(self), rhs.clone(), Operation::Add)
+    fn add(self, rhs: &Scalar) -> Self::Output {
+        op(&Scalar::new(self), rhs, Operation::Add)
     }
 }
 
 impl Sub for &Scalar {
     type Output = Scalar;
 
-    fn sub(self, rhs: Self) -> Scalar {
-        Scalar::compute(self.clone(), rhs.clone(), Operation::Sub)
+    fn sub(self, rhs: Self) -> Self::Output {
+        op(self, rhs, Operation::Sub)
     }
 }
 
 impl Sub<f64> for &Scalar {
     type Output = Scalar;
 
-    fn sub(self, rhs: f64) -> Scalar {
-        Scalar::compute(self.clone(), Scalar::new(rhs), Operation::Sub)
+    fn sub(self, rhs: f64) -> Self::Output {
+        op(self, &Scalar::new(rhs), Operation::Sub)
     }
 }
 
 impl Sub<&Scalar> for f64 {
     type Output = Scalar;
 
-    fn sub(self, rhs: &Scalar) -> Scalar {
-        Scalar::compute(Scalar::new(self), rhs.clone(), Operation::Sub)
+    fn sub(self, rhs: &Scalar) -> Self::Output {
+        op(&Scalar::new(self), rhs, Operation::Sub)
     }
 }
 
 impl Mul for &Scalar {
     type Output = Scalar;
 
-    fn mul(self, rhs: Self) -> Scalar {
-        Scalar::compute(self.clone(), rhs.clone(), Operation::Mul)
+    fn mul(self, rhs: Self) -> Self::Output {
+        op(self, rhs, Operation::Mul)
     }
 }
 
 impl Mul<f64> for &Scalar {
     type Output = Scalar;
 
-    fn mul(self, rhs: f64) -> Scalar {
-        Scalar::compute(self.clone(), Scalar::new(rhs), Operation::Mul)
+    fn mul(self, rhs: f64) -> Self::Output {
+        op(self, &Scalar::new(rhs), Operation::Mul)
     }
 }
 
 impl Mul<&Scalar> for f64 {
     type Output = Scalar;
 
-    fn mul(self, rhs: &Scalar) -> Scalar {
-        Scalar::compute(Scalar::new(self), rhs.clone(), Operation::Mul)
+    fn mul(self, rhs: &Scalar) -> Self::Output {
+        op(&Scalar::new(self), rhs, Operation::Mul)
     }
 }
 
 impl Div for &Scalar {
     type Output = Scalar;
 
-    fn div(self, rhs: Self) -> Scalar {
-        Scalar::compute(self.clone(), rhs.clone(), Operation::Div)
+    fn div(self, rhs: Self) -> Self::Output {
+        op(self, rhs, Operation::Div)
     }
 }
 
 impl Div<f64> for &Scalar {
     type Output = Scalar;
 
-    fn div(self, rhs: f64) -> Scalar {
-        Scalar::compute(self.clone(), Scalar::new(rhs), Operation::Div)
+    fn div(self, rhs: f64) -> Self::Output {
+        op(self, &Scalar::new(rhs), Operation::Div)
     }
 }
 
 impl Div<&Scalar> for f64 {
     type Output = Scalar;
 
-    fn div(self, rhs: &Scalar) -> Scalar {
-        Scalar::compute(Scalar::new(self), rhs.clone(), Operation::Div)
+    fn div(self, rhs: &Scalar) -> Self::Output {
+        op(&Scalar::new(self), rhs, Operation::Div)
     }
 }
 
 impl Add for &Tensor2D {
     type Output = Tensor2D;
 
-    fn add(self, other: Self) -> Tensor2D {
-        assert_eq!(self.rows, other.rows);
-        assert_eq!(self.cols, other.cols);
+    fn add(self, rhs: Self) -> Self::Output {
+        assert_eq!(self.rows, rhs.rows);
+        assert_eq!(self.cols, rhs.cols);
 
         let mut ans = Tensor2D::zeros(self.rows, self.cols);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = &self.data[row][col] + &other.data[row][col]
-            }
-        }
-
-        ans
-    }
-}
-
-impl Add<&Tensor2D> for f64 {
-    type Output = Tensor2D;
-
-    fn add(self, other: &Tensor2D) -> Tensor2D {
-        let mut ans = Tensor2D::zeros(other.rows, other.cols);
-
-        for row in 0..other.rows {
-            for col in 0..other.cols {
-                ans.data[row][col] = &Scalar::new(self) + &other.data[row][col]
+                ans.data[row][col] = op(&self.data[row][col], &rhs.data[row][col], Operation::Add);
             }
         }
 
@@ -139,12 +146,28 @@ impl Add<&Tensor2D> for f64 {
 impl Add<f64> for &Tensor2D {
     type Output = Tensor2D;
 
-    fn add(self, other: f64) -> Tensor2D {
+    fn add(self, rhs: f64) -> Self::Output {
         let mut ans = Tensor2D::zeros(self.rows, self.cols);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = &self.data[row][col] + &Scalar::new(other)
+                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs), Operation::Add);
+            }
+        }
+
+        ans
+    }
+}
+
+impl Add<&Tensor2D> for f64 {
+    type Output = Tensor2D;
+
+    fn add(self, rhs: &Tensor2D) -> Self::Output {
+        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols);
+
+        for row in 0..rhs.rows {
+            for col in 0..rhs.cols {
+                ans.data[row][col] = op(&Scalar::new(self), &rhs.data[row][col], Operation::Add);
             }
         }
 
@@ -155,31 +178,15 @@ impl Add<f64> for &Tensor2D {
 impl Sub for &Tensor2D {
     type Output = Tensor2D;
 
-    fn sub(self, other: Self) -> Tensor2D {
-        assert_eq!(self.rows, other.rows);
-        assert_eq!(self.cols, other.cols);
+    fn sub(self, rhs: Self) -> Self::Output {
+        assert_eq!(self.rows, rhs.rows);
+        assert_eq!(self.cols, rhs.cols);
 
         let mut ans = Tensor2D::zeros(self.rows, self.cols);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = &self.data[row][col] - &other.data[row][col]
-            }
-        }
-
-        ans
-    }
-}
-
-impl Sub<&Tensor2D> for f64 {
-    type Output = Tensor2D;
-
-    fn sub(self, other: &Tensor2D) -> Tensor2D {
-        let mut ans = Tensor2D::zeros(other.rows, other.cols);
-
-        for row in 0..other.rows {
-            for col in 0..other.cols {
-                ans.data[row][col] = &Scalar::new(self) - &other.data[row][col]
+                ans.data[row][col] = op(&self.data[row][col], &rhs.data[row][col], Operation::Sub);
             }
         }
 
@@ -190,12 +197,12 @@ impl Sub<&Tensor2D> for f64 {
 impl Sub<f64> for &Tensor2D {
     type Output = Tensor2D;
 
-    fn sub(self, other: f64) -> Tensor2D {
+    fn sub(self, rhs: f64) -> Self::Output {
         let mut ans = Tensor2D::zeros(self.rows, self.cols);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = &self.data[row][col] - &Scalar::new(other)
+                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs), Operation::Sub);
             }
         }
 
@@ -203,22 +210,44 @@ impl Sub<f64> for &Tensor2D {
     }
 }
 
+impl Sub<&Tensor2D> for f64 {
+    type Output = Tensor2D;
+
+    fn sub(self, rhs: &Tensor2D) -> Self::Output {
+        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols);
+
+        for row in 0..rhs.rows {
+            for col in 0..rhs.cols {
+                ans.data[row][col] = op(&Scalar::new(self), &rhs.data[row][col], Operation::Sub);
+            }
+        }
+
+        ans
+    }
+}
 
 impl Mul for &Tensor2D {
     type Output = Tensor2D;
 
-    fn mul(self, other: Self) -> Tensor2D {
-        assert_eq!(self.cols, other.rows);
+    fn mul(self, rhs: Self) -> Self::Output {
+        assert_eq!(
+            self.cols, rhs.rows,
+            "{}x{} incompatible with {}x{}",
+            self.rows, self.cols, rhs.rows, rhs.cols
+        );
 
-        let mut ans = Tensor2D::zeros(self.rows, other.cols);
-        
+        let mut ans = Tensor2D::zeros(self.rows, rhs.cols);
+
         for i in 0..self.rows {
-            for j in 0..other.cols {
-
+            for j in 0..rhs.cols {
                 let mut sum = Scalar::new(0.0);
 
                 for k in 0..self.cols {
-                    sum = &sum + &(&self.data[i][k] * &other.data[k][j]);
+                    sum = op(
+                        &sum,
+                        &op(&self.data[i][k], &rhs.data[k][j], Operation::Mul),
+                        Operation::Add,
+                    );
                 }
 
                 ans.data[i][j] = sum;
@@ -229,15 +258,15 @@ impl Mul for &Tensor2D {
     }
 }
 
-impl Mul<&Tensor2D> for f64 {
+impl Mul<f64> for &Tensor2D {
     type Output = Tensor2D;
 
-    fn mul(self, other: &Tensor2D) -> Tensor2D {
-        let mut ans = Tensor2D::zeros(other.rows, other.cols);
+    fn mul(self, rhs: f64) -> Self::Output {
+        let mut ans = Tensor2D::zeros(self.rows, self.cols);
 
-        for row in 0..other.rows {
-            for col in 0..other.cols {
-                ans.data[row][col] = &Scalar::new(self) * &other.data[row][col]
+        for row in 0..self.rows {
+            for col in 0..self.cols {
+                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs), Operation::Mul);
             }
         }
 
@@ -245,15 +274,15 @@ impl Mul<&Tensor2D> for f64 {
     }
 }
 
-impl Mul<f64> for &Tensor2D {
+impl Mul<&Tensor2D> for f64 {
     type Output = Tensor2D;
 
-    fn mul(self, other: f64) -> Tensor2D {
-        let mut ans = Tensor2D::zeros(self.rows, self.cols);
+    fn mul(self, rhs: &Tensor2D) -> Self::Output {
+        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols);
 
-        for row in 0..self.rows {
-            for col in 0..self.cols {
-                ans.data[row][col] = &self.data[row][col] * &Scalar::new(other)
+        for row in 0..rhs.rows {
+            for col in 0..rhs.cols {
+                ans.data[row][col] = op(&Scalar::new(self), &rhs.data[row][col], Operation::Mul);
             }
         }
 

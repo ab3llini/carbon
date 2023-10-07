@@ -4,7 +4,7 @@ use rand::distributions::Uniform;
 use rand::Rng;
 use std::vec::Vec;
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Tensor2D {
     pub rows: usize,
     pub cols: usize,
@@ -13,10 +13,6 @@ pub struct Tensor2D {
 
 impl Tensor2D {
     pub fn zeros(rows: usize, cols: usize) -> Self {
-        // Do not initialize data with something like this:
-        // vec![vec![Scalar::new(0.0); cols]; rows],
-        // This leads to a huge bug where all the scalars in the tensor point to the same memory address.
-
         let data = {
             let mut data = Vec::new();
             for _ in 0..rows {
@@ -39,7 +35,7 @@ impl Tensor2D {
 
         for row in 0..zeros.rows {
             for col in 0..zeros.cols {
-                zeros.data[row][col].set_value(rng.sample(side));
+                zeros.data[row][col].val.set(rng.sample(side))
             }
         }
 
@@ -57,7 +53,7 @@ impl Tensor2D {
 
         for row in 0..zeros.rows {
             for col in 0..zeros.cols {
-                zeros.data[row][col].set_value(rng.sample(side) / (rows as f64).sqrt());
+                zeros.data[row][col].val.set(rng.sample(side) / (rows as f64).sqrt());
             }
         }
 

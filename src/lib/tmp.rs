@@ -35,7 +35,6 @@ fn main() {
     // Gradient Descent
     let lr: f64 = 0.0001;
     let epochs: usize = 1000;
-    let log_every: usize = 100;
 
     for i in 0..epochs {
         // Temporary vector to store predictions
@@ -49,14 +48,9 @@ fn main() {
         // Compute the loss with MSE
         let loss: Scalar = loss::mse(&preds, &y_train);
 
-        
         if loss.value().abs() < 0.001 {
             println!("Converged in {} epochs", i);
             break;
-        }
-
-        if log_every != 0 && i % log_every == 0 {
-            println!("Loss: {:4}", loss.value());
         }
 
         // Backpropagate gradients
@@ -64,10 +58,10 @@ fn main() {
 
         // Update parameters
         for param in nn.params() {
-            if let Some(grad) = param.grad.get() {
-                param.val.set(param.value() - lr * grad);
-            }
+            param.set_value(param.value() - lr * param.grad())
         }
+
+        println!("Loss: {:?}", loss.value());
     }
 
     // Print preds

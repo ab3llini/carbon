@@ -56,7 +56,7 @@ impl Layer {
     pub fn new(in_size: usize, out_size: usize, activation: Activation) -> Self {
         let mut neurons = Vec::new();
         for _ in 0..out_size {
-            neurons.push(Neuron::new(in_size, activation));
+            neurons.push(Neuron::new(in_size, activation.clone()));
         }
         Self { neurons }
     }
@@ -87,16 +87,18 @@ impl MLP {
     pub fn new(sizes: Vec<usize>, activation: Activation) -> Self {
         let mut layers = Vec::new();
         for i in 0..sizes.len() - 1 {
-            layers.push(Layer::new(sizes[i], sizes[i + 1], activation));
+            layers.push(Layer::new(sizes[i], sizes[i + 1], activation.clone()));
         }
         Self { layers }
     }
 
     pub fn forward(&self, input: &Tensor2D) -> Tensor2D {
-        let mut output = input.clone();
+        let mut output: Tensor2D = input.clone();
+
         for layer in self.layers.iter() {
-            output = layer.forward(&output);
+            output = layer.forward(&output)
         }
+        
         output
     }
 

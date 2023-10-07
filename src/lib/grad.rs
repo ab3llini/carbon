@@ -22,49 +22,55 @@ pub enum Activation {
 #[derive(Debug, Clone)]
 pub enum Dependency {
     Single {
-        scalar: Rc<Scalar>,
+        scalar: Scalar,
         activation: Activation,
     },
     Double {
-        lhs: Rc<Scalar>,
-        rhs: Rc<Scalar>,
+        lhs: Scalar,
+        rhs: Scalar,
         op: Operation,
     },
 }
 
 #[derive(Debug, Clone)]
-pub struct Scalar {
+pub struct Node {
     pub val: Cell<f64>,
     pub grad: Cell<Option<f64>>,
     pub dep: Option<Dependency>,
 }
 
+#[derive(Debug, Clone)]
+pub struct Scalar {
+    pub node: Rc<Node>,
+}
 
 impl Scalar {
-    pub fn new(value: f64) -> Rc<Self> {
-        Rc::new(Self {
-            val: Cell::new(value),
-            grad: Cell::new(None),
-            dep: None,
-        })
+    pub fn new(value: f64) -> Self {
+        Self {
+            node: Rc::new(Node {
+                val: Cell::new(value),
+                grad: Cell::new(None),
+                dep: None,
+            }),
+        }
     }
 
-    pub fn grad(self: &Rc<Self>) -> Option<f64> {
+    pub fn grad(self: &Scalar) -> Option<f64> {
         self.grad.get()
     }
 
-    pub fn value(self: &Rc<Self>) -> f64 {
+    pub fn value(self: &Scalar) -> f64 {
         self.val.get()
     }
 
-    fn accumulate(self: &Rc<Self>, value: f64) -> () {
+    fn accumulate(self: &Scalar, value: f64) -> () {
         match self.grad.get() {
             Some(grad) => self.grad.set(Some(grad + value)),
             None => self.grad.set(Some(value)),
         }
     }
 
-    pub fn compute(lhs: &Rc<Self>, rhs: &Rc<Self>, op: Operation) -> Self {
+    pub fn compute(lhs: &Scalar, rhs: &Scalar, op: Operation) -> Self {
         let result: f64 = match op {
             Operation::Add => lhs.value() + rhs.value(),
             Operation::Mul => lhs.value() * rhs.value(),
@@ -73,48 +79,56 @@ impl Scalar {
         };
 
         Self {
-            val: Cell::new(result),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Double {
-                lhs: lhs.clone(),
-                rhs: rhs.clone(),
-                op,
+            node: Rc::new(Node {
+                val: Cell::new(result),
+                grad: Cell::new(None),
+                dep: Some(Dependency::Double {
+                    lhs: lhs.clone(),
+                    rhs: rhs.clone(),
+                    op,
+                }),
             }),
         }
     }
 
-    pub fn tanh(self: &Rc<Self>) -> Self {
+    pub fn tanh(self: &Scalar) -> Self {
         Self {
-            val: Cell::new(self.value().tanh()),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Single {
-                scalar: self.clone().clone(),
-                activation: Activation::Tanh,
+            node: Rc::new(Node {
+                val: Cell::new(self.value().tanh()),
+                grad: Cell::new(None),
+                dep: Some(Dependency::Single {
+                    scalar: self.clone(),
+                    activation: Activation::Tanh,
+                }),
             }),
         }
     }
 
-    pub fn exp(self: &Rc<Self>) -> Self {
+    pub fn exp(self: &Scalar) -> Self {
         Self {
-            val: Cell::new(E.powf(self.value())),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Single {
-                scalar: self.clone(),
-                activation: Activation::Exp,
+            node: Rc::new(Node {
+                val: Cell::new(E.powf(self.value())),
+                grad: Cell::new(None),
+                dep: Some(Dependency::Single {
+                    scalar: self.clone(),
+                    activation: Activation::Exp,
+                }),
             }),
         }
     }
-    pub fn sigmoid(self: &Rc<Self>) -> Self {
+    pub fn sigmoid(self: &Scalar) -> Self {
         Self {
-            val: Cell::new(1.0 / (1.0 + (-self.value()).exp())),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Single {
-                scalar: self.clone(),
-                activation: Activation::Sigmoid,
+            node: Rc::new(Node {
+                val: Cell::new(1.0 / (1.0 + (-self.value()).exp())),
+                grad: Cell::new(None),
+                dep: Some(Dependency::Single {
+                    scalar: self.clone(),
+                    activation: Activation::Sigmoid,
+                }),
             }),
         }
     }
-    pub fn relu(self: &Rc<Self>) -> Self {
+    pub fn relu(self: &Scalar) -> Self {
         let val = {
             if self.value() > 0.0 {
                 self.value()
@@ -124,33 +138,26 @@ impl Scalar {
         };
 
         Self {
-            val: Cell::new(val),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Single {
-                scalar: self.clone(),
-                activation: Activation::ReLU,
+            node: Rc::new(Node {
+                val: Cell::new(val),
+                grad: Cell::new(None),
+                dep: Some(Dependency::Single {
+                    scalar: self.clone(),
+                    activation: Activation::ReLU,
+                }),
             }),
         }
     }
 
-    pub fn pow(self: &Rc<Self>, power: f64) -> Self {
-        let mut val = self.value();
-
+    pub fn pow(self: &Scalar, power: f64) -> Self {
+        let mut ans = self.clone();
         for _ in 1..power as usize {
-            val *= self.value();
+            ans = &ans * &self.clone();
         }
-
-        Self {
-            val: Cell::new(val),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Single {
-                scalar: self.clone(),
-                activation: Activation::Exp,
-            }),
-        }
+        ans
     }
 
-    fn _backward(self: &Rc<Self>) -> () {
+    fn _backward(self: &Scalar) -> () {
         if let (Some(dep), Some(grad)) = (&self.dep, self.grad.get()) {
             // When we have an operation, we need to apply the chain rule to calculate the derivative.
             // The chain rule states that the derivative of a function f(g(x)) is f'(g(x)) * g'(x).
@@ -237,12 +244,12 @@ impl Scalar {
         }
     }
 
-    fn topological(value: &Rc<Self>, visited: &mut HashSet<usize>, stack: &mut Vec<Rc<Self>>) {
+    fn topological(value: &Scalar, visited: &mut HashSet<usize>, stack: &mut Vec<Self>) {
         if !visited.contains(&value.ptr()) {
             // Insert the node into the visited set
             visited.insert(value.ptr());
 
-            match &value.dep {
+            match &value.node.dep {
                 Some(Dependency::Single {
                     scalar,
                     activation: _,
@@ -263,14 +270,14 @@ impl Scalar {
     }
 
     // Returns the hash of the Rc pointer
-    fn ptr(self: &Rc<Self>) -> usize {
-        Rc::as_ptr(self) as usize
+    fn ptr(self: &Scalar) -> usize {
+        Rc::as_ptr(&self.node) as usize
     }
 
-    pub fn backward(self: &Rc<Self>) {
+    pub fn backward(self: &Scalar) {
         // Base strutures to sort the nodes topologically
         let mut visited: HashSet<usize> = HashSet::new();
-        let mut stack: Vec<Rc<Scalar>> = Vec::new();
+        let mut stack: Vec<Scalar> = Vec::new();
 
         // Sort the nodes topologically
         Self::topological(self, &mut visited, &mut stack);
