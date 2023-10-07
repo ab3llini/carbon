@@ -81,8 +81,9 @@ let y_train: Vec<Tensor2D> = vec![
 ];
 
 // Gradient Descent
-let lr: f64 = 0.000001;
-let epochs: usize = 10000;
+let lr: f64 = 0.0001;
+let epochs: usize = 1000;
+let log_every: usize = 100;
 
 for i in 0..epochs {
     // Temporary vector to store predictions
@@ -96,9 +97,14 @@ for i in 0..epochs {
     // Compute the loss with MSE
     let loss: Scalar = loss::mse(&preds, &y_train);
 
-    if loss.value().abs() < 0.0001 {
+    
+    if loss.value().abs() < 0.001 {
         println!("Converged in {} epochs", i);
         break;
+    }
+
+    if log_every != 0 && i % log_every == 0 {
+        println!("Loss: {:4}", loss.value());
     }
 
     // Backpropagate gradients
@@ -106,10 +112,10 @@ for i in 0..epochs {
 
     // Update parameters
     for param in nn.params() {
-        param.set_value(param.value() - lr * param.grad())
+        if let Some(grad) = param.grad.get() {
+            param.val.set(param.value() - lr * grad);
+        }
     }
-
-    println!("Loss: {:?}", loss.value());
 }
 ```
 
