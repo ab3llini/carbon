@@ -119,7 +119,7 @@ for i in 0..epochs {
 
 ## Remarks
 
-By default user-defined leaf nodes are not taken into consideration for the backprogation (`requires_grad=flase`). If you want to compute the gradients make sure to specify 
+When building a MLP user-defined lead nodes not taken into consideration for the backprogation (`requires_grad=flase`). If you want to compute the gradients make sure to specify `require_grad=true` on the tensors that hold your training data.
 
 
 ## Contributing
