@@ -1,7 +1,13 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use crate::lib::grad::Activation;
 use crate::lib::tensor::Tensor2D;
 
+use super::grad::Data;
 use super::grad::Scalar;
+
+// use super::loss;
 
 // Neuron
 pub struct Neuron {
@@ -13,8 +19,8 @@ pub struct Neuron {
 impl Neuron {
     pub fn new(size: usize, activation: Activation) -> Self {
         Self {
-            weights: Tensor2D::xavier(1, size),
-            bias: Tensor2D::xavier(1, 1),
+            weights: Tensor2D::xavier(1, size, true),
+            bias: Tensor2D::xavier(1, 1, true),
             activation,
         }
     }
@@ -31,16 +37,17 @@ impl Neuron {
         }
     }
 
-    pub fn params(&self) -> Vec<Scalar> {
-        let mut params: Vec<Scalar> = Vec::new();
+    pub fn params(&self) -> Vec<Rc<RefCell<Data>>> {
+        let mut params: Vec<Rc<RefCell<Data>>> = Vec::new();
+
         for row in self.weights.data.iter() {
             for scalar in row.iter() {
-                params.push(scalar.clone());
+                params.push(Rc::clone(&scalar.data));
             }
         }
-       for row in self.bias.data.iter() {
+        for row in self.bias.data.iter() {
             for scalar in row.iter() {
-                params.push(scalar.clone());
+                params.push(Rc::clone(&scalar.data));
             }
         }
         params
@@ -62,15 +69,15 @@ impl Layer {
     }
 
     pub fn forward(&self, input: &Tensor2D) -> Tensor2D {
-        let mut output = Tensor2D::zeros(1, self.neurons.len());
+        let mut output = Tensor2D::zeros(1, self.neurons.len(), false);
         for (i, neuron) in self.neurons.iter().enumerate() {
             output.data[0][i] = neuron.forward(input).data[0][0].clone();
         }
         output
     }
 
-    pub fn params(&self) -> Vec<Scalar> {
-        let mut params = Vec::new();
+    pub fn params(&self) -> Vec<Rc<RefCell<Data>>> {
+        let mut params: Vec<Rc<RefCell<Data>>> = Vec::new();
         for neuron in self.neurons.iter() {
             params.append(&mut neuron.params());
         }
@@ -81,6 +88,7 @@ impl Layer {
 // MLP
 pub struct MLP {
     pub layers: Vec<Layer>,
+    pub topological: Option<Vec<Rc<RefCell<Data>>>>,
 }
 
 impl MLP {
@@ -89,7 +97,10 @@ impl MLP {
         for i in 0..sizes.len() - 1 {
             layers.push(Layer::new(sizes[i], sizes[i + 1], activation.clone()));
         }
-        Self { layers }
+        Self {
+            layers,
+            topological: None,
+        }
     }
 
     pub fn forward(&self, input: &Tensor2D) -> Tensor2D {
@@ -98,15 +109,28 @@ impl MLP {
         for layer in self.layers.iter() {
             output = layer.forward(&output)
         }
-        
+
         output
     }
 
-    pub fn params(&self) -> Vec<Scalar> {
-        let mut params = Vec::new();
+    pub fn params(&self) -> Vec<Rc<RefCell<Data>>> {
+        let mut params: Vec<Rc<RefCell<Data>>> = Vec::new();
         for layer in self.layers.iter() {
             params.append(&mut layer.params());
         }
         params
+    }
+
+    pub fn backward(&mut self, loss: &Scalar) {
+        match &self.topological {
+            Some(order) => {
+                for node in order {
+                    Data::backward(Rc::clone(node));
+                }
+            }
+            None => {
+                self.topological = Some(loss.backward());
+            }
+        }
     }
 }

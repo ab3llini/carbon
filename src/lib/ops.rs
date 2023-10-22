@@ -1,30 +1,43 @@
+use crate::lib::grad::Data;
 use crate::lib::grad::Dependency;
-use crate::lib::grad::Node;
-use crate::lib::grad::Operation;
 use crate::lib::grad::Scalar;
 use crate::lib::tensor::Tensor2D;
 
-use std::cell::Cell;
+use std::cell::RefCell;
+use std::ops::{Add, Div, Mul, Sub};
 use std::rc::Rc;
 
-use std::ops::{Add, Div, Mul, Sub};
+#[derive(Debug, Clone)]
+pub enum Operation {
+    Add,
+    Mul,
+    Sub,
+    Div,
+}
 
 fn op(lhs: &Scalar, rhs: &Scalar, op: Operation) -> Scalar {
+    // let requires_grad: bool = lhs.data.borrow().requires_grad || rhs.data.borrow().requires_grad;
+    let requires_grad: bool = true;
+
     Scalar {
-        node: Rc::new(Node {
-            val: Cell::new(match op {
-                Operation::Add => lhs.value() + rhs.value(),
-                Operation::Sub => lhs.value() - rhs.value(),
-                Operation::Mul => lhs.value() * rhs.value(),
-                Operation::Div => lhs.value() / rhs.value(),
-            }),
-            grad: Cell::new(None),
-            dep: Some(Dependency::Double {
-                lhs: lhs.clone(),
-                rhs: rhs.clone(),
-                op,
-            }),
-        }),
+        data: Rc::new(RefCell::new(Data {
+            val: match op {
+                Operation::Add => lhs.val() + rhs.val(),
+                Operation::Sub => lhs.val() - rhs.val(),
+                Operation::Mul => lhs.val() * rhs.val(),
+                Operation::Div => lhs.val() / rhs.val(),
+            },
+            grad: 0.0,
+            dep: match requires_grad {
+                true => Some(Dependency::Double {
+                    lhs: Rc::clone(&lhs.data),
+                    rhs: Rc::clone(&rhs.data),
+                    op,
+                }),
+                false => None,
+            },
+            requires_grad,
+        })),
     }
 }
 
@@ -36,19 +49,19 @@ impl Add for &Scalar {
     }
 }
 
-impl Add<f64> for &Scalar {
+impl Add<f32> for &Scalar {
     type Output = Scalar;
 
-    fn add(self, rhs: f64) -> Self::Output {
-        op(self, &Scalar::new(rhs), Operation::Add)
+    fn add(self, rhs: f32) -> Self::Output {
+        op(self, &Scalar::new(rhs, false), Operation::Add)
     }
 }
 
-impl Add<&Scalar> for f64 {
+impl Add<&Scalar> for f32 {
     type Output = Scalar;
 
     fn add(self, rhs: &Scalar) -> Self::Output {
-        op(&Scalar::new(self), rhs, Operation::Add)
+        op(&Scalar::new(self, false), rhs, Operation::Add)
     }
 }
 
@@ -60,19 +73,19 @@ impl Sub for &Scalar {
     }
 }
 
-impl Sub<f64> for &Scalar {
+impl Sub<f32> for &Scalar {
     type Output = Scalar;
 
-    fn sub(self, rhs: f64) -> Self::Output {
-        op(self, &Scalar::new(rhs), Operation::Sub)
+    fn sub(self, rhs: f32) -> Self::Output {
+        op(self, &Scalar::new(rhs, false), Operation::Sub)
     }
 }
 
-impl Sub<&Scalar> for f64 {
+impl Sub<&Scalar> for f32 {
     type Output = Scalar;
 
     fn sub(self, rhs: &Scalar) -> Self::Output {
-        op(&Scalar::new(self), rhs, Operation::Sub)
+        op(&Scalar::new(self, false), rhs, Operation::Sub)
     }
 }
 
@@ -84,19 +97,19 @@ impl Mul for &Scalar {
     }
 }
 
-impl Mul<f64> for &Scalar {
+impl Mul<f32> for &Scalar {
     type Output = Scalar;
 
-    fn mul(self, rhs: f64) -> Self::Output {
-        op(self, &Scalar::new(rhs), Operation::Mul)
+    fn mul(self, rhs: f32) -> Self::Output {
+        op(self, &Scalar::new(rhs, false), Operation::Mul)
     }
 }
 
-impl Mul<&Scalar> for f64 {
+impl Mul<&Scalar> for f32 {
     type Output = Scalar;
 
     fn mul(self, rhs: &Scalar) -> Self::Output {
-        op(&Scalar::new(self), rhs, Operation::Mul)
+        op(&Scalar::new(self, false), rhs, Operation::Mul)
     }
 }
 
@@ -108,19 +121,19 @@ impl Div for &Scalar {
     }
 }
 
-impl Div<f64> for &Scalar {
+impl Div<f32> for &Scalar {
     type Output = Scalar;
 
-    fn div(self, rhs: f64) -> Self::Output {
-        op(self, &Scalar::new(rhs), Operation::Div)
+    fn div(self, rhs: f32) -> Self::Output {
+        op(self, &Scalar::new(rhs, false), Operation::Div)
     }
 }
 
-impl Div<&Scalar> for f64 {
+impl Div<&Scalar> for f32 {
     type Output = Scalar;
 
     fn div(self, rhs: &Scalar) -> Self::Output {
-        op(&Scalar::new(self), rhs, Operation::Div)
+        op(&Scalar::new(self, false), rhs, Operation::Div)
     }
 }
 
@@ -131,7 +144,7 @@ impl Add for &Tensor2D {
         assert_eq!(self.rows, rhs.rows);
         assert_eq!(self.cols, rhs.cols);
 
-        let mut ans = Tensor2D::zeros(self.rows, self.cols);
+        let mut ans = Tensor2D::zeros(self.rows, self.cols, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
@@ -143,15 +156,15 @@ impl Add for &Tensor2D {
     }
 }
 
-impl Add<f64> for &Tensor2D {
+impl Add<f32> for &Tensor2D {
     type Output = Tensor2D;
 
-    fn add(self, rhs: f64) -> Self::Output {
-        let mut ans = Tensor2D::zeros(self.rows, self.cols);
+    fn add(self, rhs: f32) -> Self::Output {
+        let mut ans = Tensor2D::zeros(self.rows, self.cols, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs), Operation::Add);
+                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs, false), Operation::Add);
             }
         }
 
@@ -159,15 +172,15 @@ impl Add<f64> for &Tensor2D {
     }
 }
 
-impl Add<&Tensor2D> for f64 {
+impl Add<&Tensor2D> for f32 {
     type Output = Tensor2D;
 
     fn add(self, rhs: &Tensor2D) -> Self::Output {
-        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols);
+        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols, false);
 
         for row in 0..rhs.rows {
             for col in 0..rhs.cols {
-                ans.data[row][col] = op(&Scalar::new(self), &rhs.data[row][col], Operation::Add);
+                ans.data[row][col] = op(&Scalar::new(self, false), &rhs.data[row][col], Operation::Add);
             }
         }
 
@@ -182,7 +195,7 @@ impl Sub for &Tensor2D {
         assert_eq!(self.rows, rhs.rows);
         assert_eq!(self.cols, rhs.cols);
 
-        let mut ans = Tensor2D::zeros(self.rows, self.cols);
+        let mut ans = Tensor2D::zeros(self.rows, self.cols, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
@@ -194,15 +207,15 @@ impl Sub for &Tensor2D {
     }
 }
 
-impl Sub<f64> for &Tensor2D {
+impl Sub<f32> for &Tensor2D {
     type Output = Tensor2D;
 
-    fn sub(self, rhs: f64) -> Self::Output {
-        let mut ans = Tensor2D::zeros(self.rows, self.cols);
+    fn sub(self, rhs: f32) -> Self::Output {
+        let mut ans = Tensor2D::zeros(self.rows, self.cols, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs), Operation::Sub);
+                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs, false), Operation::Sub);
             }
         }
 
@@ -210,15 +223,15 @@ impl Sub<f64> for &Tensor2D {
     }
 }
 
-impl Sub<&Tensor2D> for f64 {
+impl Sub<&Tensor2D> for f32 {
     type Output = Tensor2D;
 
     fn sub(self, rhs: &Tensor2D) -> Self::Output {
-        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols);
+        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols, false);
 
         for row in 0..rhs.rows {
             for col in 0..rhs.cols {
-                ans.data[row][col] = op(&Scalar::new(self), &rhs.data[row][col], Operation::Sub);
+                ans.data[row][col] = op(&Scalar::new(self, false), &rhs.data[row][col], Operation::Sub);
             }
         }
 
@@ -236,37 +249,41 @@ impl Mul for &Tensor2D {
             self.rows, self.cols, rhs.rows, rhs.cols
         );
 
-        let mut ans = Tensor2D::zeros(self.rows, rhs.cols);
+        let mut ans = Tensor2D::zeros(self.rows, rhs.cols, false);
 
         for i in 0..self.rows {
             for j in 0..rhs.cols {
-                let mut sum = Scalar::new(0.0);
+                let mut sum: Option<Scalar> = None;
 
                 for k in 0..self.cols {
-                    sum = op(
-                        &sum,
-                        &op(&self.data[i][k], &rhs.data[k][j], Operation::Mul),
-                        Operation::Add,
-                    );
+                    match &sum {
+                        None => sum = Some(op(&self.data[i][k], &rhs.data[k][j], Operation::Mul)),
+                        Some(_) => {
+                            sum = Some(op(
+                                &sum.unwrap(),
+                                &op(&self.data[i][k], &rhs.data[k][j], Operation::Mul),
+                                Operation::Add,
+                            ))
+                        }
+                    }
                 }
 
-                ans.data[i][j] = sum;
+                ans.data[i][j] = sum.unwrap();
             }
         }
-
         ans
     }
 }
 
-impl Mul<f64> for &Tensor2D {
+impl Mul<f32> for &Tensor2D {
     type Output = Tensor2D;
 
-    fn mul(self, rhs: f64) -> Self::Output {
-        let mut ans = Tensor2D::zeros(self.rows, self.cols);
+    fn mul(self, rhs: f32) -> Self::Output {
+        let mut ans = Tensor2D::zeros(self.rows, self.cols, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs), Operation::Mul);
+                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs, false), Operation::Mul);
             }
         }
 
@@ -274,15 +291,15 @@ impl Mul<f64> for &Tensor2D {
     }
 }
 
-impl Mul<&Tensor2D> for f64 {
+impl Mul<&Tensor2D> for f32 {
     type Output = Tensor2D;
 
     fn mul(self, rhs: &Tensor2D) -> Self::Output {
-        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols);
+        let mut ans = Tensor2D::zeros(rhs.rows, rhs.cols, false);
 
         for row in 0..rhs.rows {
             for col in 0..rhs.cols {
-                ans.data[row][col] = op(&Scalar::new(self), &rhs.data[row][col], Operation::Mul);
+                ans.data[row][col] = op(&Scalar::new(self, false), &rhs.data[row][col], Operation::Mul);
             }
         }
 

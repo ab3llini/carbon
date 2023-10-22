@@ -1,28 +1,33 @@
 use crate::lib::grad::Scalar;
-use crate::lib::grad::Node;
+use crate::lib::grad::Activation;
+use crate::lib::ops::Operation;
 use crate::lib::tensor::Tensor2D;
 use std::fmt::Display;
-use std::ops::Deref;
-
 
 impl Display for Scalar {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self.node.grad.get() {
-            Some(grad) => {
-                write!(f, "{:.3} [{:.3}]", self.value(), grad)
-            }
-            None => {
-                write!(f, "{:.3} [None]", self.value())
-            }
+        write!(f, "{:.4} [{:.4}]", self.data.borrow().val, self.data.borrow().grad)
+    }
+}
+impl Display for Activation  {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Activation::Exp => write!(f, "exp"),
+            Activation::Tanh => write!(f, "tanh"),
+            Activation::Sigmoid => write!(f, "sigmoid"),
+            Activation::ReLU => write!(f, "relu"),
         }
     }
 }
 
-impl Deref for Scalar {
-    type Target = Node;
-
-    fn deref(&self) -> &Node {
-        &self.node
+impl Display for Operation {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operation::Add => write!(f, "+"),
+            Operation::Sub => write!(f, "-"),
+            Operation::Mul => write!(f, "*"),
+            Operation::Div => write!(f, "/"),
+        }
     }
 }
 

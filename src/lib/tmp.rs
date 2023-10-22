@@ -33,7 +33,7 @@ fn main() {
     ];
 
     // Gradient Descent
-    let lr: f64 = 0.0001;
+    let lr: f32 = 0.0001;
     let epochs: usize = 1000;
 
     for i in 0..epochs {

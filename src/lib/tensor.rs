@@ -1,8 +1,14 @@
 use crate::lib::grad::Activation;
+use crate::lib::grad::Nonlinear;
 use crate::lib::grad::Scalar;
+
 use rand::distributions::Uniform;
 use rand::Rng;
+use std::cell::RefCell;
+use std::rc::Rc;
 use std::vec::Vec;
+
+use super::grad::Data;
 
 #[derive(Debug, Clone)]
 pub struct Tensor2D {
@@ -12,13 +18,13 @@ pub struct Tensor2D {
 }
 
 impl Tensor2D {
-    pub fn zeros(rows: usize, cols: usize) -> Self {
+    pub fn zeros(rows: usize, cols: usize, requires_grad: bool) -> Self {
         let data = {
             let mut data = Vec::new();
             for _ in 0..rows {
                 let mut row = Vec::new();
                 for _ in 0..cols {
-                    row.push(Scalar::new(0.0));
+                    row.push(Scalar::new(0.0, requires_grad));
                 }
                 data.push(row);
             }
@@ -28,14 +34,14 @@ impl Tensor2D {
         Self { rows, cols, data }
     }
 
-    pub fn uniform(rows: usize, cols: usize) -> Self {
-        let zeros = Self::zeros(rows, cols);
+    pub fn uniform(rows: usize, cols: usize, requires_grad: bool) -> Self {
+        let zeros = Self::zeros(rows, cols, requires_grad);
         let mut rng = rand::thread_rng();
         let side = Uniform::new(-1.0, 1.0);
 
         for row in 0..zeros.rows {
             for col in 0..zeros.cols {
-                zeros.data[row][col].val.set(rng.sample(side))
+                zeros.data[row][col].data.borrow_mut().val = rng.sample(side)
             }
         }
 
@@ -46,14 +52,15 @@ impl Tensor2D {
         }
     }
 
-    pub fn xavier(rows: usize, cols: usize) -> Self {
-        let zeros = Self::zeros(rows, cols);
+    pub fn xavier(rows: usize, cols: usize, requires_grad: bool) -> Self {
+        let zeros = Self::zeros(rows, cols, requires_grad);
         let mut rng = rand::thread_rng();
         let side = Uniform::new(-1.0, 1.0);
 
         for row in 0..zeros.rows {
             for col in 0..zeros.cols {
-                zeros.data[row][col].val.set(rng.sample(side) / (rows as f64).sqrt());
+                zeros.data[row][col].data.borrow_mut().val =
+                    rng.sample(side) / (rows as f32).sqrt();
             }
         }
 
@@ -64,7 +71,7 @@ impl Tensor2D {
         }
     }
 
-    pub fn from(vec: Vec<Vec<f64>>) -> Self {
+    pub fn from(vec: Vec<Vec<f32>>) -> Self {
         // Assert that the vector is not empty.
         assert!(!vec.is_empty());
 
@@ -75,7 +82,7 @@ impl Tensor2D {
         for row in 0..rows {
             let mut row_data = Vec::new();
             for col in 0..cols {
-                row_data.push(Scalar::new(vec[row][col]));
+                row_data.push(Scalar::new(vec[row][col], false));
             }
             data.push(row_data);
         }
@@ -84,25 +91,25 @@ impl Tensor2D {
     }
 
     // From a scalar creates a 1x1 tensor.
-    pub fn scalar(scalar: f64) -> Self {
+    pub fn scalar(scalar: f32) -> Self {
         Self {
             rows: 1,
             cols: 1,
-            data: vec![vec![Scalar::new(scalar)]],
+            data: vec![vec![Scalar::new(scalar, false)]],
         }
     }
 
     // From a 1D array reference creates a 1xN 2dtensor
-    pub fn row(vec: Vec<f64>) -> Self {
+    pub fn row(vec: Vec<f32>) -> Self {
         Self::from(vec![vec.clone()])
     }
 
-    pub fn col(vec: Vec<f64>) -> Self {
+    pub fn col(vec: Vec<f32>) -> Self {
         Self::from(vec![vec.clone()]).transpose()
     }
 
     pub fn transpose(&self) -> Tensor2D {
-        let mut ans = Self::zeros(self.cols, self.rows);
+        let mut ans = Self::zeros(self.cols, self.rows, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
@@ -113,26 +120,30 @@ impl Tensor2D {
         ans
     }
 
-    pub fn backward(&self) -> () {
+    pub fn backward(&self) -> Vec<Rc<RefCell<Data>>> {
+        // Accumulate the nodes that need to be backpropagated
+        let mut nodes: Vec<Rc<RefCell<Data>>> = Vec::new();
+
         for row in 0..self.rows {
             for col in 0..self.cols {
-                self.data[row][col].backward();
+                // Extend the nodes with the backward of the current node
+                nodes.extend(self.data[row][col].backward());
             }
         }
+
+        nodes
     }
 
-    pub fn nonlinear(tensor: Self, activation: Activation) -> Tensor2D {
-        let mut ans = Self::zeros(tensor.rows, tensor.cols);
+    pub fn nonlinear(tensor: &Self, activation: Activation) -> Tensor2D {
+        let mut ans = Self::zeros(tensor.rows, tensor.cols, false);
 
         for row in 0..tensor.rows {
             for col in 0..tensor.cols {
                 match activation {
-                    Activation::Tanh => ans.data[row][col] = tensor.data[row][col].clone().tanh(),
-                    Activation::Sigmoid => {
-                        ans.data[row][col] = tensor.data[row][col].clone().sigmoid()
-                    }
-                    Activation::ReLU => ans.data[row][col] = tensor.data[row][col].clone().relu(),
-                    Activation::Exp => ans.data[row][col] = tensor.data[row][col].clone().exp(),
+                    Activation::Tanh => ans.data[row][col] = tensor.data[row][col].tanh(),
+                    Activation::Sigmoid => ans.data[row][col] = tensor.data[row][col].sigmoid(),
+                    Activation::ReLU => ans.data[row][col] = tensor.data[row][col].relu(),
+                    Activation::Exp => ans.data[row][col] = tensor.data[row][col].exp(),
                 }
             }
         }
@@ -140,30 +151,30 @@ impl Tensor2D {
         ans
     }
 
-    pub fn tanh(self) -> Tensor2D {
+    pub fn tanh(&self) -> Tensor2D {
         Self::nonlinear(self, Activation::Tanh)
     }
 
-    pub fn sigmoid(self) -> Tensor2D {
+    pub fn sigmoid(&self) -> Tensor2D {
         Self::nonlinear(self, Activation::Sigmoid)
     }
 
-    pub fn relu(self) -> Tensor2D {
+    pub fn relu(&self) -> Tensor2D {
         Self::nonlinear(self, Activation::ReLU)
     }
 
-    pub fn exp(self) -> Tensor2D {
+    pub fn exp(&self) -> Tensor2D {
         Self::nonlinear(self, Activation::Exp)
     }
 
     // The pow of a tensor is a tensor
     // To compute it we have to call pow on each element of the tensor
-    pub fn pow(self, power: f64) -> Tensor2D {
-        let mut ans = Self::zeros(self.rows, self.cols);
+    pub fn pow(self, power: usize) -> Tensor2D {
+        let mut ans = Self::zeros(self.rows, self.cols, false);
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = self.data[row][col].clone().pow(power);
+                ans.data[row][col] = self.data[row][col].pow(power);
             }
         }
 
