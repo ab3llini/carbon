@@ -32,8 +32,9 @@ Here's a glimpse of what Carbon offers:
 
 #### Scalars
 ```rust
-let a = Scalar::new(1.0);
-let b = Scalar::new(2.0);
+// Define two scalars with require_grad=true
+let a = Scalar::new(1.0, true);
+let b = Scalar::new(2.0, true);
 let c = &a + &b;
 let d = c.relu().exp();
 
@@ -46,19 +47,12 @@ print!("b: {}", b.grad()); // 20.085
 #### Tensors
 
 ```rust
-let a = Tensor2D::row(vec![1.0, 1.0, 1.0]); // 1x3
-let b = Tensor2D::uniform(3, 3); // 3x3
+let a = Tensor2D::row(vec![1.0, 1.0, 1.0]);
+let b = Tensor2D::uniform(3, 3, false);
 
-let c = &a * &b; // 1x3
-let d = &a + &c; // 1x3
-let e = d.pow(2.0).tanh(); //1x3
-
-// Compute gradients with backpropagation
-e.backward();
-
-// Values & Gradient of c with respect to e
- println!("c: {}", c);
-// Value = 2.092, Grad = 0 | Value = -0.585, Grad = 0.805 | Value = -0.418, Grad = 1.039
+let c = &a * &b;
+let d = &a + &c;
+let e = d.pow(2.0).tanh();
 ```
 
 #### MLP
@@ -81,13 +75,13 @@ let y_train: Vec<Tensor2D> = vec![
 ];
 
 // Gradient Descent
-let lr: f64 = 0.0001;
+let lr: f32 = 0.05;
 let epochs: usize = 1000;
-let log_every: usize = 100;
+let log_every: usize = 10;
 
 for i in 0..epochs {
     // Temporary vector to store predictions
-    let mut preds: vec::Vec<Tensor2D> = vec![];
+    let mut preds: Vec<Tensor2D> = vec![];
 
     // For each element in our small dataset, perform a forward pass
     for input in x_train.iter() {
@@ -97,14 +91,19 @@ for i in 0..epochs {
     // Compute the loss with MSE
     let loss: Scalar = loss::mse(&preds, &y_train);
 
-    
-    if loss.value().abs() < 0.001 {
+    if loss.val().abs() < 0.001 {
         println!("Converged in {} epochs", i);
         break;
     }
 
     if log_every != 0 && i % log_every == 0 {
-        println!("Loss: {:4}", loss.value());
+        println!("Loss: {:4}", loss.val());
+    }
+
+    // Zero the gradients
+    for param in nn.params() {
+        let mut data = param.borrow_mut();
+        data.grad = 0.0;
     }
 
     // Backpropagate gradients
@@ -112,12 +111,16 @@ for i in 0..epochs {
 
     // Update parameters
     for param in nn.params() {
-        if let Some(grad) = param.grad.get() {
-            param.val.set(param.value() - lr * grad);
-        }
+        let mut data = param.borrow_mut();
+        data.val += -lr * data.grad;
     }
 }
 ```
+
+## Remarks
+
+By default user-defined leaf nodes are not taken into consideration for the backprogation (`requires_grad=flase`). If you want to compute the gradients make sure to specify 
+
 
 ## Contributing
 
