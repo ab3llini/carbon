@@ -41,7 +41,7 @@ impl Tensor2D {
 
         for row in 0..zeros.rows {
             for col in 0..zeros.cols {
-                zeros.data[row][col].data.borrow_mut().val = rng.sample(side)
+                zeros.data[row][col].data.borrow_mut().val = rng.sample(side);
             }
         }
 
@@ -140,10 +140,18 @@ impl Tensor2D {
         for row in 0..tensor.rows {
             for col in 0..tensor.cols {
                 match activation {
-                    Activation::Tanh => ans.data[row][col] = tensor.data[row][col].tanh(),
-                    Activation::Sigmoid => ans.data[row][col] = tensor.data[row][col].sigmoid(),
-                    Activation::ReLU => ans.data[row][col] = tensor.data[row][col].relu(),
-                    Activation::Exp => ans.data[row][col] = tensor.data[row][col].exp(),
+                    Activation::Tanh => {
+                        ans.data[row][col] = tensor.data[row][col].tanh();
+                    }
+                    Activation::Sigmoid => {
+                        ans.data[row][col] = tensor.data[row][col].sigmoid();
+                    }
+                    Activation::ReLU => {
+                        ans.data[row][col] = tensor.data[row][col].relu();
+                    }
+                    Activation::Exp => {
+                        ans.data[row][col] = tensor.data[row][col].exp();
+                    }
                 }
             }
         }

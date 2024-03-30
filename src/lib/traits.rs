@@ -9,7 +9,7 @@ impl Display for Scalar {
         write!(f, "{:.4} [{:.4}]", self.data.borrow().val, self.data.borrow().grad)
     }
 }
-impl Display for Activation  {
+impl Display for Activation {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Activation::Exp => write!(f, "exp"),

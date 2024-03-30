@@ -23,14 +23,14 @@ fn main() {
         Tensor2D::row(vec![2.0, 3.0, -1.0]),
         Tensor2D::row(vec![3.0, -1.0, 0.5]),
         Tensor2D::row(vec![0.5, 1.0, 1.0]),
-        Tensor2D::row(vec![1.0, 1.0, -1.0]),
+        Tensor2D::row(vec![1.0, 1.0, -1.0])
     ];
 
     let y_train: Vec<Tensor2D> = vec![
         Tensor2D::scalar(1.0),
         Tensor2D::scalar(-1.0),
         Tensor2D::scalar(-1.0),
-        Tensor2D::scalar(1.0),
+        Tensor2D::scalar(1.0)
     ];
 
     // Gradient Descent

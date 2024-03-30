@@ -4,7 +4,7 @@ use crate::lib::grad::Scalar;
 use crate::lib::tensor::Tensor2D;
 
 use std::cell::RefCell;
-use std::ops::{Add, Div, Mul, Sub};
+use std::ops::{ Add, Div, Mul, Sub };
 use std::rc::Rc;
 
 #[derive(Debug, Clone)]
@@ -20,24 +20,27 @@ fn op(lhs: &Scalar, rhs: &Scalar, op: Operation) -> Scalar {
     let requires_grad: bool = true;
 
     Scalar {
-        data: Rc::new(RefCell::new(Data {
-            val: match op {
-                Operation::Add => lhs.val() + rhs.val(),
-                Operation::Sub => lhs.val() - rhs.val(),
-                Operation::Mul => lhs.val() * rhs.val(),
-                Operation::Div => lhs.val() / rhs.val(),
-            },
-            grad: 0.0,
-            dep: match requires_grad {
-                true => Some(Dependency::Double {
-                    lhs: Rc::clone(&lhs.data),
-                    rhs: Rc::clone(&rhs.data),
-                    op,
-                }),
-                false => None,
-            },
-            requires_grad,
-        })),
+        data: Rc::new(
+            RefCell::new(Data {
+                val: match op {
+                    Operation::Add => lhs.val() + rhs.val(),
+                    Operation::Sub => lhs.val() - rhs.val(),
+                    Operation::Mul => lhs.val() * rhs.val(),
+                    Operation::Div => lhs.val() / rhs.val(),
+                },
+                grad: 0.0,
+                dep: match requires_grad {
+                    true =>
+                        Some(Dependency::Double {
+                            lhs: Rc::clone(&lhs.data),
+                            rhs: Rc::clone(&rhs.data),
+                            op,
+                        }),
+                    false => None,
+                },
+                requires_grad,
+            })
+        ),
     }
 }
 
@@ -164,7 +167,11 @@ impl Add<f32> for &Tensor2D {
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs, false), Operation::Add);
+                ans.data[row][col] = op(
+                    &self.data[row][col],
+                    &Scalar::new(rhs, false),
+                    Operation::Add
+                );
             }
         }
 
@@ -180,7 +187,11 @@ impl Add<&Tensor2D> for f32 {
 
         for row in 0..rhs.rows {
             for col in 0..rhs.cols {
-                ans.data[row][col] = op(&Scalar::new(self, false), &rhs.data[row][col], Operation::Add);
+                ans.data[row][col] = op(
+                    &Scalar::new(self, false),
+                    &rhs.data[row][col],
+                    Operation::Add
+                );
             }
         }
 
@@ -215,7 +226,11 @@ impl Sub<f32> for &Tensor2D {
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs, false), Operation::Sub);
+                ans.data[row][col] = op(
+                    &self.data[row][col],
+                    &Scalar::new(rhs, false),
+                    Operation::Sub
+                );
             }
         }
 
@@ -231,7 +246,11 @@ impl Sub<&Tensor2D> for f32 {
 
         for row in 0..rhs.rows {
             for col in 0..rhs.cols {
-                ans.data[row][col] = op(&Scalar::new(self, false), &rhs.data[row][col], Operation::Sub);
+                ans.data[row][col] = op(
+                    &Scalar::new(self, false),
+                    &rhs.data[row][col],
+                    Operation::Sub
+                );
             }
         }
 
@@ -244,9 +263,13 @@ impl Mul for &Tensor2D {
 
     fn mul(self, rhs: Self) -> Self::Output {
         assert_eq!(
-            self.cols, rhs.rows,
+            self.cols,
+            rhs.rows,
             "{}x{} incompatible with {}x{}",
-            self.rows, self.cols, rhs.rows, rhs.cols
+            self.rows,
+            self.cols,
+            rhs.rows,
+            rhs.cols
         );
 
         let mut ans = Tensor2D::zeros(self.rows, rhs.cols, false);
@@ -257,13 +280,17 @@ impl Mul for &Tensor2D {
 
                 for k in 0..self.cols {
                     match &sum {
-                        None => sum = Some(op(&self.data[i][k], &rhs.data[k][j], Operation::Mul)),
+                        None => {
+                            sum = Some(op(&self.data[i][k], &rhs.data[k][j], Operation::Mul));
+                        }
                         Some(_) => {
-                            sum = Some(op(
-                                &sum.unwrap(),
-                                &op(&self.data[i][k], &rhs.data[k][j], Operation::Mul),
-                                Operation::Add,
-                            ))
+                            sum = Some(
+                                op(
+                                    &sum.unwrap(),
+                                    &op(&self.data[i][k], &rhs.data[k][j], Operation::Mul),
+                                    Operation::Add
+                                )
+                            );
                         }
                     }
                 }
@@ -283,7 +310,11 @@ impl Mul<f32> for &Tensor2D {
 
         for row in 0..self.rows {
             for col in 0..self.cols {
-                ans.data[row][col] = op(&self.data[row][col], &Scalar::new(rhs, false), Operation::Mul);
+                ans.data[row][col] = op(
+                    &self.data[row][col],
+                    &Scalar::new(rhs, false),
+                    Operation::Mul
+                );
             }
         }
 
@@ -299,7 +330,11 @@ impl Mul<&Tensor2D> for f32 {
 
         for row in 0..rhs.rows {
             for col in 0..rhs.cols {
-                ans.data[row][col] = op(&Scalar::new(self, false), &rhs.data[row][col], Operation::Mul);
+                ans.data[row][col] = op(
+                    &Scalar::new(self, false),
+                    &rhs.data[row][col],
+                    Operation::Mul
+                );
             }
         }
 

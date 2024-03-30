@@ -107,7 +107,7 @@ impl MLP {
         let mut output: Tensor2D = input.clone();
 
         for layer in self.layers.iter() {
-            output = layer.forward(&output)
+            output = layer.forward(&output);
         }
 
         output
